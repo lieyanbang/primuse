@@ -51,10 +51,10 @@ jobs:
     timeout-minutes: 120
     env:
       XCODE_PATH: /Applications/Xcode_26.4.1.app
-      XCODE_VERSION: 26.4.1
-      XCODE_BUILD: 17E202
-      IOS_SDK_VERSION: 26.4
-      XCODEGEN_VERSION: 2.44.1
+      XCODE_VERSION: "26.4.1"
+      XCODE_BUILD: "17E202"
+      IOS_SDK_VERSION: "26.4"
+      XCODEGEN_VERSION: "2.44.1"
       XCODEGEN_SHA256: a2e905fb68446e9bb4008cdfe2e13e3f176d0cbcca828b71770f8e53fca91b73
     steps:
       - name: Checkout complete source snapshot
