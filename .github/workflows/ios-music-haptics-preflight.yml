@@ -169,23 +169,45 @@ jobs:
           test -d "$derived_app"
           test -f "$derived_app/Info.plist"
 
+          verify_bundle() {
+            local bundle="$1" expected_bundle_id="$2" require_arm64="$3"
+            local bundle_id executable architectures
+            test -d "$bundle"
+            test -f "$bundle/Info.plist"
+            bundle_id=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$bundle/Info.plist")
+            test "$bundle_id" = "$expected_bundle_id"
+            executable=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$bundle/Info.plist")
+            test -x "$bundle/$executable"
+            if test "$require_arm64" = true; then
+              lipo -verify_arch arm64 "$bundle/$executable"
+            else
+              architectures=$(lipo -archs "$bundle/$executable")
+              test -n "$architectures"
+              printf 'Verified %s architecture(s): %s\n' "$bundle" "$architectures"
+            fi
+            printf 'Verified bundle %s: %s\n' "$bundle" "$bundle_id"
+          }
+
           verify_app() {
             local app="$1"
-            local bundle_id executable plugins watch_apps framework
-            test -d "$app"
-            test -f "$app/Info.plist"
+            local bundle_id executable plugins watch_apps framework framework_path framework_executable
+            verify_bundle "$app" 'com.welape.yuanyin' true
             bundle_id=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")
-            test "$bundle_id" = 'com.welape.yuanyin'
             executable=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Info.plist")
-            test -x "$app/$executable"
-            lipo -verify_arch arm64 "$app/$executable"
 
-            test -d "$app/PlugIns/PrimuseWidgetExtension.appex"
-            test -d "$app/PlugIns/PrimuseKaraokeModelDownloader.appex"
-            test -d "$app/Watch/PrimuseWatchApp.app"
-            for framework in libavcodec libavformat libavutil libswresample; do
-              test -d "$app/Frameworks/${framework}.framework"
-              lipo -verify_arch arm64 "$app/Frameworks/${framework}.framework/${framework}"
+            verify_bundle "$app/PlugIns/PrimuseWidgetExtension.appex" 'com.welape.yuanyin.widget' true
+            verify_bundle "$app/PlugIns/PrimuseKaraokeModelDownloader.appex" 'com.welape.yuanyin.karaokemodel' true
+            verify_bundle "$app/Watch/PrimuseWatchApp.app" 'com.welape.yuanyin.watchkitapp' false
+            verify_bundle "$app/Watch/PrimuseWatchApp.app/PlugIns/PrimuseWatchWidgets.appex" \
+              'com.welape.yuanyin.watchkitapp.widgets' false
+
+            for framework in GRDB AMSMB2 libavcodec libavformat libavutil libswresample; do
+              framework_path="$app/Frameworks/${framework}.framework"
+              test -d "$framework_path"
+              test -f "$framework_path/Info.plist"
+              framework_executable=$(/usr/libexec/PlistBuddy \
+                -c 'Print :CFBundleExecutable' "$framework_path/Info.plist")
+              lipo -verify_arch arm64 "$framework_path/$framework_executable"
             done
 
             plugins=$(find "$app/PlugIns" -maxdepth 1 -type d -name '*.appex' | wc -l | tr -d ' ')
