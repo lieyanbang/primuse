@@ -132,11 +132,17 @@ public enum ID3SynchronizedLyricsParser {
                 bytes = bytes.dropFirst(2)
             }
             let pairs = Array(bytes)
-            units = stride(from: 0, to: pairs.count - 1, by: 2).map { index in
-                bigEndian
-                    ? UInt16(pairs[index]) << 8 | UInt16(pairs[index + 1])
-                    : UInt16(pairs[index + 1]) << 8 | UInt16(pairs[index])
+            var decodedUnits: [UInt16] = []
+            decodedUnits.reserveCapacity(pairs.count / 2)
+            for pair in 0..<(pairs.count / 2) {
+                let byteIndex = pair * 2
+                let firstByte = UInt16(pairs[byteIndex])
+                let secondByte = UInt16(pairs[byteIndex + 1])
+                let highByte = bigEndian ? firstByte : secondByte
+                let lowByte = bigEndian ? secondByte : firstByte
+                decodedUnits.append((highByte << 8) | lowByte)
             }
+            units = decodedUnits
         default:
             units = bytes.map(UInt16.init)
         }
