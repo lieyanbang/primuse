@@ -195,9 +195,18 @@ jobs:
             printf 'Verified %s: bundle=%s, executable=%s, embedded extensions=%s, watch apps=%s\n' \
               "$app" "$bundle_id" "$executable" "$plugins" "$watch_apps"
 
+            haptics_declared=false
+            if grep -Eq '^[[:space:]]*MusicHapticsSupported:[[:space:]]*true([[:space:]]*(#.*)?)?$' project.yml \
+              || /usr/libexec/PlistBuddy -c 'Print :MusicHapticsSupported' Primuse/Info.plist 2>/dev/null | grep -Fxq 'true'; then
+              haptics_declared=true
+            fi
+
             if value=$(/usr/libexec/PlistBuddy -c 'Print :MusicHapticsSupported' "$app/Info.plist" 2>/dev/null); then
               test "$value" = 'true'
               echo 'MusicHapticsSupported=true is present in the built app Info.plist.'
+            elif test "$haptics_declared" = true; then
+              echo 'MusicHapticsSupported is declared by the project but missing from the built app Info.plist.' >&2
+              return 1
             else
               echo 'MusicHapticsSupported is not declared in this preflight build.'
             fi
