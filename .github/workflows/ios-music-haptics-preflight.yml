@@ -262,7 +262,8 @@ jobs:
             "commit": "${GITHUB_SHA}",
             "ref": "${GITHUB_REF}",
             "run_id": "${GITHUB_RUN_ID}",
-            "runner_label": "macos-15",
+            "run_attempt": "${GITHUB_RUN_ATTEMPT}",
+            "runner_label": "macos-26",
             "runner_architecture": "$(uname -m)",
             "macos_version": "$(sw_vers -productVersion)",
             "xcode_version": "${XCODE_VERSION}",
@@ -297,7 +298,7 @@ jobs:
       - name: Upload signing handoff artifact
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: primuse-ios-device-debug-unsigned-${{ github.run_number }}
+          name: primuse-ios-device-debug-unsigned-${{ github.run_number }}-${{ github.run_attempt }}
           path: |
             ${{ steps.package.outputs.payload }}
             ${{ steps.package.outputs.manifest }}
