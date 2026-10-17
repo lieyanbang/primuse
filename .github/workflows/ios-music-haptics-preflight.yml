@@ -254,11 +254,11 @@ jobs:
           verify_app "$derived_app"
 
           archive_path="$RUNNER_TEMP/Primuse-unsigned.xcarchive"
-          archive_kind='unsigned-app'
-          payload_source="$derived_app"
-          payload_name='Primuse-Debug-iOS-unsigned.app.zip'
+          archive_kind='unsigned-xcarchive-application'
+          payload_source="$archive_path"
+          payload_name='Primuse-Debug-iOS-unsigned.xcarchive.zip'
 
-          if xcodebuild archive \
+          xcodebuild archive \
             -project Primuse.xcodeproj \
             -scheme Primuse \
             -configuration Debug \
@@ -270,25 +270,14 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY='' \
-            2>&1 | tee "$RUNNER_TEMP/xcodebuild-archive.log"; then
-            archived_app="$archive_path/Products/Applications/Primuse.app"
-            if test -d "$archived_app" && test -f "$archive_path/Info.plist"; then
-              verify_app "$archived_app"
-              if archive_bundle_id=$(/usr/libexec/PlistBuddy \
-                -c 'Print :ApplicationProperties:CFBundleIdentifier' "$archive_path/Info.plist" 2>/dev/null) \
-                && test "$archive_bundle_id" = 'com.welape.yuanyin'; then
-                archive_kind='unsigned-xcarchive-application'
-                payload_source="$archive_path"
-                payload_name='Primuse-Debug-iOS-unsigned.xcarchive.zip'
-              else
-                echo '::warning title=Archive metadata::The archive lacks ApplicationProperties and is not being advertised as a signing-ready Xcode application archive.'
-              fi
-            else
-              echo '::warning title=Archive product::The archive command completed without a Primuse.app product; using the verified app bundle instead.'
-            fi
-          else
-            echo '::warning title=Unsigned archive unavailable::The unsigned archive action did not complete; retaining the verified iOS Device app bundle as the deliverable.'
-          fi
+            2>&1 | tee "$RUNNER_TEMP/xcodebuild-archive.log"
+          archived_app="$archive_path/Products/Applications/Primuse.app"
+          test -d "$archived_app"
+          test -f "$archive_path/Info.plist"
+          verify_app "$archived_app"
+          archive_bundle_id=$(/usr/libexec/PlistBuddy \
+            -c 'Print :ApplicationProperties:CFBundleIdentifier' "$archive_path/Info.plist")
+          test "$archive_bundle_id" = 'com.welape.yuanyin'
 
           artifact_dir="$RUNNER_TEMP/primuse-artifact"
           mkdir -p "$artifact_dir"
@@ -335,11 +324,11 @@ jobs:
           {
             echo '## Unsigned iOS Device build'
             echo
-            echo "- Commit: `$GITHUB_SHA`"
-            echo "- Toolchain: Xcode $XCODE_VERSION ($XCODE_BUILD), iOS SDK $ios_sdk, XcodeGen $xcodegen_version"
-            echo "- Product: `$payload_name` ($archive_kind), Bundle ID `$bundle_id`"
-            echo "- Size: $size_bytes bytes"
-            echo "- SHA-256: `$sha256`"
+            printf '%s\n' "- Commit: $GITHUB_SHA"
+            printf '%s\n' "- Toolchain: Xcode $XCODE_VERSION ($XCODE_BUILD), iOS SDK $ios_sdk, XcodeGen $xcodegen_version"
+            printf '%s\n' "- Product: $payload_name ($archive_kind), Bundle ID $bundle_id"
+            printf '%s\n' "- Size: $size_bytes bytes"
+            printf '%s\n' "- SHA-256: $sha256"
             echo '- Signing: disabled; this is not an IPA and cannot be installed as downloaded.'
           } >> "$GITHUB_STEP_SUMMARY"
 
