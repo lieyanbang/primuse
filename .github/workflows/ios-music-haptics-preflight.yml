@@ -192,32 +192,47 @@ jobs:
 
           verify_app() {
             local app="$1"
-            local bundle_id executable plugins watch_apps framework framework_path framework_executable
+            local bundle_id executable extension_root extension_count watch_apps framework_path framework_executable
+            local framework_count framework_architectures count
             verify_bundle "$app" 'com.welape.yuanyin' true
             bundle_id=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")
             executable=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Info.plist")
 
             verify_bundle "$app/PlugIns/PrimuseWidgetExtension.appex" 'com.welape.yuanyin.widget' true
-            verify_bundle "$app/PlugIns/PrimuseKaraokeModelDownloader.appex" 'com.welape.yuanyin.karaokemodel' true
+            verify_bundle "$app/Extensions/PrimuseKaraokeModelDownloader.appex" 'com.welape.yuanyin.karaokemodel' true
             verify_bundle "$app/Watch/PrimuseWatchApp.app" 'com.welape.yuanyin.watchkitapp' false
             verify_bundle "$app/Watch/PrimuseWatchApp.app/PlugIns/PrimuseWatchWidgets.appex" \
               'com.welape.yuanyin.watchkitapp.widgets' false
 
-            for framework in GRDB AMSMB2 libavcodec libavformat libavutil libswresample; do
-              framework_path="$app/Frameworks/${framework}.framework"
-              test -d "$framework_path"
+            framework_count=0
+            while IFS= read -r -d '' framework_path; do
               test -f "$framework_path/Info.plist"
               framework_executable=$(/usr/libexec/PlistBuddy \
                 -c 'Print :CFBundleExecutable' "$framework_path/Info.plist")
-              lipo -verify_arch arm64 "$framework_path/$framework_executable"
-            done
+              if [[ "$framework_path" == "$app/Watch/"* ]]; then
+                framework_architectures=$(lipo -archs "$framework_path/$framework_executable")
+                test -n "$framework_architectures"
+                printf 'Verified framework %s architecture(s): %s\n' \
+                  "$framework_path" "$framework_architectures"
+              else
+                lipo -verify_arch arm64 "$framework_path/$framework_executable"
+              fi
+              framework_count=$((framework_count + 1))
+            done < <(find "$app" -type d -name '*.framework' -print0)
+            test "$framework_count" -gt 0
 
-            plugins=$(find "$app/PlugIns" -maxdepth 1 -type d -name '*.appex' | wc -l | tr -d ' ')
+            extension_count=0
+            for extension_root in "$app/PlugIns" "$app/Extensions"; do
+              if test -d "$extension_root"; then
+                count=$(find "$extension_root" -maxdepth 1 -type d -name '*.appex' | wc -l | tr -d ' ')
+                extension_count=$((extension_count + count))
+              fi
+            done
             watch_apps=$(find "$app/Watch" -maxdepth 1 -type d -name '*.app' | wc -l | tr -d ' ')
-            test "$plugins" -ge 2
+            test "$extension_count" -ge 2
             test "$watch_apps" -ge 1
             printf 'Verified %s: bundle=%s, executable=%s, embedded extensions=%s, watch apps=%s\n' \
-              "$app" "$bundle_id" "$executable" "$plugins" "$watch_apps"
+              "$app" "$bundle_id" "$executable" "$extension_count" "$watch_apps"
 
             haptics_declared=false
             if grep -Eq '^[[:space:]]*MusicHapticsSupported:[[:space:]]*true([[:space:]]*(#.*)?)?$' project.yml \
