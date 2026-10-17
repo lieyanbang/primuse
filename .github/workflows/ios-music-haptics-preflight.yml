@@ -96,16 +96,38 @@ jobs:
           "$RUNNER_TEMP/xcodegen/bin/xcodegen" --version
           "$RUNNER_TEMP/xcodegen/bin/xcodegen" --version | grep -Fq "$XCODEGEN_VERSION"
 
-      - name: Regenerate and verify committed Xcode project
+      - name: Regenerate Xcode project and verify target inventory
         shell: bash
         run: |
           set -euo pipefail
+
+          committed_inventory="$RUNNER_TEMP/committed-project.json"
+          generated_inventory="$RUNNER_TEMP/generated-project.json"
+          xcodebuild -list -json -project Primuse.xcodeproj > "$committed_inventory"
           xcodegen generate --spec project.yml
-          git diff --exit-code -- Primuse.xcodeproj
-          if [[ -n "$(git status --porcelain --untracked-files=all -- Primuse.xcodeproj)" ]]; then
-            git status --short --untracked-files=all -- Primuse.xcodeproj
-            exit 1
-          fi
+          xcodebuild -list -json -project Primuse.xcodeproj > "$generated_inventory"
+          python3 - "$committed_inventory" "$generated_inventory" <<'PY'
+          import json
+          import sys
+
+          def inventory(path):
+              with open(path, encoding="utf-8") as source:
+                  project = json.load(source)["project"]
+              return {
+                  key: sorted(project.get(key, []))
+                  for key in ("targets", "schemes", "configurations")
+              }
+
+          committed = inventory(sys.argv[1])
+          generated = inventory(sys.argv[2])
+          if committed != generated:
+              print("Committed and generated Xcode project inventories differ.")
+              print("Committed:", json.dumps(committed, indent=2))
+              print("Generated:", json.dumps(generated, indent=2))
+              raise SystemExit(1)
+          print("XcodeGen target, scheme, and configuration inventories match.")
+          print(json.dumps(generated, indent=2))
+          PY
 
       - name: Resolve locked Swift packages
         shell: bash
