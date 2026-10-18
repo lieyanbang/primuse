@@ -14,12 +14,3 @@ id _Nullable PRPerformObjCBlockCatchingException(
         return nil;
     }
 }
-
-CKContainer * _Nullable PRMakeCloudKitContainer(
-    NSString *identifier,
-    NSString * _Nullable * _Nullable failureReason
-) {
-    return PRPerformObjCBlockCatchingException(^id {
-        return [[CKContainer alloc] initWithIdentifier:identifier];
-    }, failureReason);
-}

@@ -43,7 +43,10 @@ enum CloudKitRuntime {
 
         let container = resolution.resolve {
             var failureReason: NSString?
-            let container = PRMakeCloudKitContainer(containerID, &failureReason)
+            let result = PRPerformObjCBlockCatchingException({
+                CKContainer(identifier: containerID)
+            }, &failureReason)
+            let container = result as? CKContainer
             if let container {
                 return (container, nil)
             }
