@@ -364,6 +364,8 @@ targets:
       - path: PrimuseTests/ScrobbleRequestTests.swift
       - path: PrimuseTests/ScrobbleCredentialHealthTests.swift
       - path: PrimuseTests/CloudRequestTests.swift
+      - path: PrimuseTests/CloudKitRuntimeTests.swift
+      - path: PrimuseTests/CloudKitRuntimeExceptionTests.m
       - path: PrimuseTests/BaiduWriteReplayTests.swift
       - path: PrimuseTests/SubsonicFavoriteWritebackTests.swift
       - path: PrimuseTests/RemoteMediaHTTPErrorTests.swift
@@ -788,6 +790,7 @@ targets:
       - path: Primuse/Services/Metadata/EmbeddedMetadataWriter.swift
       - path: Primuse/Services/Metadata/LyricsParser.swift
       - path: Primuse/Services/Cloud/CloudKitRuntime.swift
+      - path: Primuse/Services/Cloud/CloudKitContainerExceptionCatcher.m
       - path: Primuse/Services/Cloud/LibrarySnapshotSync.swift
       # 扫码直传带来的设置在电视上落地(接收端);发送端那一半只编进 iOS / macOS。
       - path: Primuse/Services/Cloud/LANSettingsTransferService.swift

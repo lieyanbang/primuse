@@ -144,6 +144,60 @@ jobs:
             Primuse.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved \
             PrimuseKit/Package.resolved
 
+      - name: Run CloudKit runtime tests on iOS Simulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -showdestinations \
+            -project Primuse.xcodeproj \
+            -scheme Primuse > "$RUNNER_TEMP/ios-test-destinations.txt"
+          simulator_id=$(python3 - "$RUNNER_TEMP/ios-test-destinations.txt" <<'PY'
+          import re
+          import sys
+
+          text = open(sys.argv[1], encoding="utf-8").read()
+          match = re.search(
+              r"\{\s*platform:iOS Simulator,\s*arch:[^,]+,\s*id:([^,]+),\s*OS:[^,]+,\s*name:iPhone[^}]*\}",
+              text,
+          )
+          if not match:
+              print("No available iPhone Simulator destination was reported by Xcode.", file=sys.stderr)
+              print(text, file=sys.stderr)
+              raise SystemExit(1)
+          print(match.group(1).strip())
+          PY
+          )
+          echo "Running focused CloudKit tests on Simulator $simulator_id"
+          xcodebuild test \
+            -project Primuse.xcodeproj \
+            -scheme Primuse \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,id=$simulator_id" \
+            -derivedDataPath "$RUNNER_TEMP/PrimuseSimulatorTests" \
+            -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages" \
+            -onlyUsePackageVersionsFromResolvedFile \
+            -only-testing:PrimuseTests/CloudKitRuntimeTests \
+            -only-testing:PrimuseTests/CloudKitRuntimeExceptionTests \
+            CODE_SIGNING_ALLOWED=NO \
+            2>&1 | tee "$RUNNER_TEMP/xcodebuild-cloudkit-ios-tests.log"
+
+      - name: Run CloudKit runtime tests on macOS
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild test \
+            -project Primuse.xcodeproj \
+            -scheme PrimuseMac \
+            -configuration Debug \
+            -destination 'platform=macOS' \
+            -derivedDataPath "$RUNNER_TEMP/PrimuseMacTests" \
+            -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages" \
+            -onlyUsePackageVersionsFromResolvedFile \
+            -only-testing:PrimuseMacTests/CloudKitRuntimeTests \
+            -only-testing:PrimuseMacTests/CloudKitRuntimeExceptionTests \
+            CODE_SIGNING_ALLOWED=NO \
+            2>&1 | tee "$RUNNER_TEMP/xcodebuild-cloudkit-macos-tests.log"
+
       - name: Build iOS Device Debug without signing
         shell: bash
         run: |
