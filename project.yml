@@ -199,6 +199,7 @@ targets:
     info:
       path: Primuse/Info.plist
       properties:
+        PrimuseCloudKitMode: "$(PRIMUSE_CLOUDKIT_MODE)"
         # 最多三个:超了系统直接拒绝安装(maximum of 3 allowed)。显示名 Primuse 本身不用再列。
         INAlternativeAppNames:
           - INAlternativeAppName: "猿音"
@@ -320,6 +321,9 @@ targets:
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         SWIFT_EMIT_LOC_STRINGS: YES
         PRODUCT_BUNDLE_IDENTIFIER: com.welape.yuanyin
+        PRIMUSE_CLOUDKIT_MODE: standard
+        PRIMUSE_CLOUDKIT_COMPILATION_CONDITION: ""
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) $(PRIMUSE_CLOUDKIT_COMPILATION_CONDITION)"
         CODE_SIGN_ENTITLEMENTS: Config/Primuse.entitlements
         # Bridging header re-declares SFBInputSource's hidden -initWithURL:
         # so we can subclass it from Swift for streaming cloud playback.
@@ -378,6 +382,7 @@ targets:
       - path: PrimuseTests/PlaylistPartialImportNoticeTests.swift
       - path: PrimuseTests/AIRequestQuotaTests.swift
       - path: PrimuseTests/GeminiAudioQuotaTests.swift
+      - path: PrimuseTests/CloudKitRuntimeTests.swift
     dependencies:
       - target: PrimuseMac
     settings:

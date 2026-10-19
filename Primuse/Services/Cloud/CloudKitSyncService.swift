@@ -5,9 +5,9 @@ import SwiftUI
 
 enum CloudSyncStatus: Equatable, Sendable {
     case disabled
-    /// The running binary has no usable CloudKit entitlement (simulator,
-    /// linker-signed preview, or ad-hoc QA build). This is a build capability,
-    /// not an account or synchronization failure.
+    /// Build policy denies CloudKit (for example Simulator, missing macOS
+    /// container entitlement, or unsigned iOS prototype mode). This is not an
+    /// account failure.
     case unavailableInBuild
     case idle
     case syncing
