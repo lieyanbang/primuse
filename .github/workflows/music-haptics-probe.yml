@@ -159,7 +159,7 @@ jobs:
 
             local linked="$RUNNER_TEMP/linked-frameworks.txt"
             otool -L "$bundle/$executable" | tee "$linked"
-            for framework in AVFoundation MediaAccessibility MediaPlayer Observation UniformTypeIdentifiers; do
+            for framework in AVFoundation MediaAccessibility MediaPlayer UniformTypeIdentifiers; do
               grep -Fq "$framework.framework" "$linked"
             done
             for forbidden in CloudKit Intents AppIntents WidgetKit WatchKit DeviceCheck; do
@@ -269,7 +269,8 @@ jobs:
               "bundle_identifier": os.environ["PRODUCT_BUNDLE_IDENTIFIER"],
               "music_haptics_supported": True,
               "code_signing": "disabled",
-              "frameworks": ["AVFoundation", "Foundation", "MediaAccessibility", "MediaPlayer", "Observation", "SwiftUI", "UniformTypeIdentifiers"],
+              "frameworks": ["AVFoundation", "Foundation", "MediaAccessibility", "MediaPlayer", "SwiftUI", "UniformTypeIdentifiers"],
+              "swift_modules": ["Observation"],
               "archive": artifact(archive_zip),
               "unsigned_ipa": artifact(ipa),
           }

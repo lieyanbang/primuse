@@ -50,5 +50,4 @@ targets:
       - sdk: AVFoundation.framework
       - sdk: MediaAccessibility.framework
       - sdk: MediaPlayer.framework
-      - sdk: Observation.framework
       - sdk: UniformTypeIdentifiers.framework

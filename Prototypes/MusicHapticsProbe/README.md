@@ -18,7 +18,7 @@ The installed app uses the stable bundle identifier `com.welape.primuse.musichap
 
 ## Included frameworks
 
-The target links AVFoundation, MediaAccessibility, MediaPlayer, Observation, and UniformTypeIdentifiers, plus SwiftUI and Foundation. It has no third-party packages, background modes, CloudKit, Siri/Intents, app extensions, Watch app, or Widget.
+The target links AVFoundation, MediaAccessibility, MediaPlayer, and UniformTypeIdentifiers, plus SwiftUI and Foundation. It uses Swift's Observation API for view state. It has no third-party packages, background modes, CloudKit, Siri/Intents, app extensions, Watch app, or Widget.
 
 ## Migration after validation
 
