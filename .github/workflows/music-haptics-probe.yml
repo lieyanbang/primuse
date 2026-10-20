@@ -164,7 +164,18 @@ jobs:
             file "$bundle/$executable"
 
             local linked="$RUNNER_TEMP/linked-frameworks.txt"
-            otool -L "$bundle/$executable" | tee "$linked"
+            local debug_dylib="$bundle/$executable.debug.dylib"
+            local binary
+            local -a binaries=("$bundle/$executable")
+            if test -f "$debug_dylib"; then
+              lipo -verify_arch arm64 "$debug_dylib"
+              binaries+=("$debug_dylib")
+            fi
+            : > "$linked"
+            for binary in "${binaries[@]}"; do
+              file "$binary"
+              otool -L "$binary" | tee -a "$linked"
+            done
             for framework in AVFoundation MediaAccessibility MediaPlayer UniformTypeIdentifiers; do
               grep -Fq "$framework.framework" "$linked"
             done
