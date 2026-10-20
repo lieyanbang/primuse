@@ -32,8 +32,6 @@ targets:
     platform: iOS
     sources:
       - path: Sources
-    info:
-      path: Config/Info.plist
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.welape.primuse.musichapticsprobe

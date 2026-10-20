@@ -79,8 +79,12 @@ jobs:
           set -euo pipefail
           test ! -e Primuse.xcodeproj
           test ! -e Package.resolved
+          plist_before=$(shasum -a 256 "$PROJECT_DIR/Config/Info.plist" | awk '{print $1}')
           cd "$PROJECT_DIR"
           xcodegen generate --spec project.yml
+          plist_after=$(shasum -a 256 Config/Info.plist | awk '{print $1}')
+          test "$plist_before" = "$plist_after"
+          echo "XcodeGen preserved the committed Info.plist (sha256=$plist_after)."
           xcodebuild -list -json -project "$PRODUCT_NAME.xcodeproj" | tee "$RUNNER_TEMP/project-inventory.json"
           python3 - "$RUNNER_TEMP/project-inventory.json" <<'PY'
           import json
