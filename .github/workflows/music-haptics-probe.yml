@@ -1,0 +1,314 @@
+name: Music Haptics Probe CI
+
+on:
+  push:
+    paths:
+      - .github/workflows/music-haptics-probe.yml
+      - Prototypes/MusicHapticsProbe/**
+  pull_request:
+    paths:
+      - .github/workflows/music-haptics-probe.yml
+      - Prototypes/MusicHapticsProbe/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: music-haptics-probe-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-package:
+    name: iOS Device build, archive, and unsigned IPA
+    runs-on: xcode-27
+    timeout-minutes: 45
+    env:
+      XCODE_PATH: /Applications/Xcode_27.0.0.app
+      XCODE_VERSION: "27.0"
+      XCODE_BUILD: "27A266a"
+      IOS_SDK_VERSION: "27.0"
+      XCODEGEN_VERSION: "2.44.1"
+      XCODEGEN_SHA256: a2e905fb68446e9bb4008cdfe2e13e3f176d0cbcca828b71770f8e53fca91b73
+      PROJECT_DIR: Prototypes/MusicHapticsProbe
+      PRODUCT_NAME: MusicHapticsProbe
+      PRODUCT_BUNDLE_IDENTIFIER: com.welape.primuse.musichapticsprobe
+    steps:
+      - name: Checkout probe sources only
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          lfs: false
+          submodules: false
+          persist-credentials: false
+          sparse-checkout: Prototypes/MusicHapticsProbe
+          sparse-checkout-cone-mode: true
+
+      - name: Select and verify Xcode toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d "$XCODE_PATH"
+          sudo xcode-select --switch "$XCODE_PATH"
+          xcodebuild -version | tee "$RUNNER_TEMP/xcode-version.txt"
+          grep -Fq "Xcode $XCODE_VERSION" "$RUNNER_TEMP/xcode-version.txt"
+          grep -Fq "Build version $XCODE_BUILD" "$RUNNER_TEMP/xcode-version.txt"
+          sdk=$(xcrun --sdk iphoneos --show-sdk-version)
+          echo "iOS SDK: $sdk"
+          test "$sdk" = "$IOS_SDK_VERSION"
+          echo "Swift: $(swift --version | head -n 1)"
+          echo "macOS: $(sw_vers -productVersion)"
+
+      - name: Install checksum-verified XcodeGen
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/xcodegen-${XCODEGEN_VERSION}.zip"
+          curl --fail --location --retry 3 --silent --show-error \
+            "https://github.com/yonaskolb/XcodeGen/releases/download/${XCODEGEN_VERSION}/xcodegen.zip" \
+            --output "$archive"
+          echo "$XCODEGEN_SHA256  $archive" | shasum -a 256 --check
+          ditto -x -k "$archive" "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/xcodegen/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/xcodegen/bin/xcodegen" --version | tee "$RUNNER_TEMP/xcodegen-version.txt"
+          grep -Fq "$XCODEGEN_VERSION" "$RUNNER_TEMP/xcodegen-version.txt"
+
+      - name: Generate standalone Xcode project and inspect scheme
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e Primuse.xcodeproj
+          test ! -e Package.resolved
+          cd "$PROJECT_DIR"
+          xcodegen generate --spec project.yml
+          xcodebuild -list -json -project "$PRODUCT_NAME.xcodeproj" | tee "$RUNNER_TEMP/project-inventory.json"
+          python3 - "$RUNNER_TEMP/project-inventory.json" <<'PY'
+          import json
+          import sys
+
+          with open(sys.argv[1], encoding="utf-8") as source:
+              inventory = json.load(source)["project"]
+          expected = ["MusicHapticsProbe"]
+          if inventory.get("targets") != expected:
+              raise SystemExit(f"Unexpected project targets: {inventory.get('targets')}")
+          if inventory.get("schemes") != expected:
+              raise SystemExit(f"Unexpected project schemes: {inventory.get('schemes')}")
+          print("Standalone target and scheme verified; no Primuse service targets are present.")
+          PY
+          if rg -n 'CloudKit|Intents|AppIntents|WidgetKit|WatchKit|DeviceCheck|CODE_SIGN_ENTITLEMENTS|packages:' Sources project.yml; then
+            echo "The standalone target references a prohibited service, extension, or package." >&2
+            exit 1
+          fi
+
+      - name: Build iOS Device Debug without signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          project="$PROJECT_DIR/$PRODUCT_NAME.xcodeproj"
+          xcodebuild build \
+            -project "$project" \
+            -scheme "$PRODUCT_NAME" \
+            -configuration Debug \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/MusicHapticsProbeDerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            2>&1 | tee "$RUNNER_TEMP/xcodebuild-build.log"
+
+      - name: Archive, verify, and package unsigned IPA
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          project="$PROJECT_DIR/$PRODUCT_NAME.xcodeproj"
+          derived="$RUNNER_TEMP/MusicHapticsProbeDerivedData"
+          app="$derived/Build/Products/Debug-iphoneos/$PRODUCT_NAME.app"
+          archive="$RUNNER_TEMP/$PRODUCT_NAME-unsigned.xcarchive"
+          archive_zip_name="Primuse-MusicHapticsProbe-Debug-unsigned.xcarchive.zip"
+          ipa_name="Primuse-MusicHapticsProbe-Debug-unsigned.ipa"
+          test -d "$app"
+
+          verify_app() {
+            local bundle="$1"
+            test -d "$bundle"
+            test -f "$bundle/Info.plist"
+            python3 - "$bundle/Info.plist" <<'PY'
+          import plistlib
+          import sys
+
+          with open(sys.argv[1], "rb") as source:
+              info = plistlib.load(source)
+          if type(info.get("MusicHapticsSupported")) is not bool or info["MusicHapticsSupported"] is not True:
+              raise SystemExit("Built Info.plist must contain Boolean MusicHapticsSupported=true")
+          if info.get("CFBundleIdentifier") != "com.welape.primuse.musichapticsprobe":
+              raise SystemExit(f"Unexpected bundle identifier: {info.get('CFBundleIdentifier')}")
+          if info.get("CFBundlePackageType") != "APPL":
+              raise SystemExit(f"Unexpected package type: {info.get('CFBundlePackageType')}")
+          for key in ("UIBackgroundModes", "BGTaskSchedulerPermittedIdentifiers", "CKContainerEnvironment"):
+              if key in info:
+                  raise SystemExit(f"Unexpected background or CloudKit declaration: {key}")
+          print("Built app Info.plist: MusicHapticsSupported is Boolean true; bundle metadata is valid.")
+          PY
+
+            local executable
+            executable=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$bundle/Info.plist")
+            test -x "$bundle/$executable"
+            lipo -verify_arch arm64 "$bundle/$executable"
+            file "$bundle/$executable"
+
+            local linked="$RUNNER_TEMP/linked-frameworks.txt"
+            otool -L "$bundle/$executable" | tee "$linked"
+            for framework in AVFoundation MediaAccessibility MediaPlayer Observation UniformTypeIdentifiers; do
+              grep -Fq "$framework.framework" "$linked"
+            done
+            for forbidden in CloudKit Intents AppIntents WidgetKit WatchKit DeviceCheck; do
+              if grep -Fq "$forbidden.framework" "$linked"; then
+                echo "Unexpected linked framework: $forbidden" >&2
+                return 1
+              fi
+            done
+
+            if find "$bundle" -mindepth 1 -type d \( -name '*.appex' -o -name '*.framework' -o -name '*.app' \) -print | grep -q .; then
+              echo "Unexpected nested app, extension, or embedded framework in $bundle" >&2
+              return 1
+            fi
+            test ! -d "$bundle/PlugIns"
+            test ! -d "$bundle/Watch"
+            test ! -e "$bundle/embedded.mobileprovision"
+            test ! -d "$bundle/_CodeSignature"
+            echo "Verified unsigned standalone app: $bundle/$executable"
+          }
+
+          verify_app "$app"
+
+          xcodebuild archive \
+            -project "$project" \
+            -scheme "$PRODUCT_NAME" \
+            -configuration Debug \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$archive" \
+            -derivedDataPath "$derived" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            2>&1 | tee "$RUNNER_TEMP/xcodebuild-archive.log"
+
+          archived_app="$archive/Products/Applications/$PRODUCT_NAME.app"
+          test -f "$archive/Info.plist"
+          test -d "$archived_app"
+          applications=$(find "$archive/Products/Applications" -mindepth 1 -maxdepth 1 -type d -name '*.app' | wc -l | tr -d ' ')
+          test "$applications" = 1
+          verify_app "$archived_app"
+
+          artifact_dir="$RUNNER_TEMP/music-haptics-probe-artifacts"
+          stage="$RUNNER_TEMP/music-haptics-probe-ipa-stage"
+          mkdir -p "$artifact_dir" "$stage/Payload"
+          archive_zip="$artifact_dir/$archive_zip_name"
+          ipa="$artifact_dir/$ipa_name"
+          ditto -c -k --sequesterRsrc --keepParent "$archive" "$archive_zip"
+          ditto "$archived_app" "$stage/Payload/$PRODUCT_NAME.app"
+          (cd "$stage" && /usr/bin/zip -X -q -r "$ipa" Payload)
+
+          unzip -tq "$archive_zip"
+          unzip -tq "$ipa"
+          zipinfo -1 "$ipa" | grep -Fxq "Payload/$PRODUCT_NAME.app/Info.plist"
+          zipinfo -1 "$archive_zip" | grep -Fq "$PRODUCT_NAME-unsigned.xcarchive/Products/Applications/$PRODUCT_NAME.app/Info.plist"
+
+          python3 - "$archive" "$stage/Payload/$PRODUCT_NAME.app" <<'PY'
+          import os
+          import plistlib
+          import sys
+
+          archive_info_path = os.path.join(sys.argv[1], "Info.plist")
+          ipa_app_info_path = os.path.join(sys.argv[2], "Info.plist")
+          with open(archive_info_path, "rb") as source:
+              archive_info = plistlib.load(source)
+          with open(ipa_app_info_path, "rb") as source:
+              ipa_info = plistlib.load(source)
+          expected = "com.welape.primuse.musichapticsprobe"
+          if archive_info.get("ApplicationProperties", {}).get("CFBundleIdentifier") != expected:
+              raise SystemExit("Archive does not contain the expected app as its primary application")
+          if ipa_info.get("CFBundleIdentifier") != expected:
+              raise SystemExit("IPA Payload has the wrong bundle identifier")
+          if ipa_info.get("MusicHapticsSupported") is not True:
+              raise SystemExit("IPA Payload lost MusicHapticsSupported=true")
+          print("Archive and Payload/*.app identities and Music Haptics declaration verified.")
+          PY
+
+          xcodegen_version=$(xcodegen --version | tail -n 1)
+          sdk=$(xcrun --sdk iphoneos --show-sdk-version)
+          python3 - "$artifact_dir" "$archive_zip" "$ipa" "$sdk" "$xcodegen_version" <<'PY'
+          import hashlib
+          import json
+          import os
+          import pathlib
+          import sys
+
+          artifact_dir = pathlib.Path(sys.argv[1])
+          archive_zip = pathlib.Path(sys.argv[2])
+          ipa = pathlib.Path(sys.argv[3])
+          def artifact(path):
+              digest = hashlib.sha256(path.read_bytes()).hexdigest()
+              return {"file": path.name, "size_bytes": path.stat().st_size, "sha256": digest}
+
+          manifest = {
+              "repository": os.environ["GITHUB_REPOSITORY"],
+              "commit": os.environ["GITHUB_SHA"],
+              "ref": os.environ["GITHUB_REF"],
+              "run_id": os.environ["GITHUB_RUN_ID"],
+              "run_attempt": int(os.environ["GITHUB_RUN_ATTEMPT"]),
+              "runner": "xcode-27",
+              "macos_version": os.popen("sw_vers -productVersion").read().strip(),
+              "xcode_version": os.environ["XCODE_VERSION"],
+              "xcode_build": os.environ["XCODE_BUILD"],
+              "ios_sdk": sys.argv[4],
+              "xcodegen_version": sys.argv[5],
+              "configuration": "Debug",
+              "destination": "generic/platform=iOS",
+              "bundle_identifier": os.environ["PRODUCT_BUNDLE_IDENTIFIER"],
+              "music_haptics_supported": True,
+              "code_signing": "disabled",
+              "frameworks": ["AVFoundation", "Foundation", "MediaAccessibility", "MediaPlayer", "Observation", "SwiftUI", "UniformTypeIdentifiers"],
+              "archive": artifact(archive_zip),
+              "unsigned_ipa": artifact(ipa),
+          }
+          manifest_path = artifact_dir / "manifest.json"
+          manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+          for key in ("archive", "unsigned_ipa"):
+              item = manifest[key]
+              print(f"{item['file']}: size={item['size_bytes']} sha256={item['sha256']}")
+          print(f"Manifest: {manifest_path}")
+          PY
+
+          cat "$artifact_dir/manifest.json" | tee "$RUNNER_TEMP/artifact-manifest.json"
+          {
+            echo '## Music Haptics Probe artifact validation'
+            echo
+            echo '- Bundle ID: `com.welape.primuse.musichapticsprobe`'
+            echo '- `MusicHapticsSupported`: Boolean `true` in built app, archive, and IPA payload'
+            echo '- Device architecture: `arm64`'
+            echo '- Signing: disabled; the IPA requires manual signing before installation'
+            echo
+            echo '```json'
+            cat "$artifact_dir/manifest.json"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload archive, unsigned IPA, manifest, and build logs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: primuse-music-haptics-probe-${{ github.run_number }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/music-haptics-probe-artifacts/
+            ${{ runner.temp }}/xcode-version.txt
+            ${{ runner.temp }}/xcodegen-version.txt
+            ${{ runner.temp }}/xcodebuild-build.log
+            ${{ runner.temp }}/xcodebuild-archive.log
+            ${{ runner.temp }}/project-inventory.json
+            ${{ runner.temp }}/linked-frameworks.txt
+            ${{ runner.temp }}/artifact-manifest.json
+          if-no-files-found: warn
+          retention-days: 14
+          compression-level: 0

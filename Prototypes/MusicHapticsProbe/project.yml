@@ -1,0 +1,54 @@
+name: MusicHapticsProbe
+options:
+  bundleIdPrefix: com.welape.primuse
+  deploymentTarget:
+    iOS: "18.0"
+  xcodeVersion: "27.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    IPHONEOS_DEPLOYMENT_TARGET: "18.0"
+    TARGETED_DEVICE_FAMILY: "1,2"
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGNING_REQUIRED: NO
+    CODE_SIGNING_ALLOWED: NO
+
+schemes:
+  MusicHapticsProbe:
+    build:
+      targets:
+        MusicHapticsProbe: all
+    run:
+      config: Debug
+      executable: MusicHapticsProbe
+    archive:
+      config: Debug
+
+targets:
+  MusicHapticsProbe:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+    info:
+      path: Config/Info.plist
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.welape.primuse.musichapticsprobe
+        PRODUCT_NAME: MusicHapticsProbe
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: Config/Info.plist
+        SWIFT_VERSION: "6.0"
+        IPHONEOS_DEPLOYMENT_TARGET: "18.0"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGNING_REQUIRED: NO
+        CODE_SIGNING_ALLOWED: NO
+    dependencies:
+      - sdk: AVFoundation.framework
+      - sdk: MediaAccessibility.framework
+      - sdk: MediaPlayer.framework
+      - sdk: Observation.framework
+      - sdk: UniformTypeIdentifiers.framework
