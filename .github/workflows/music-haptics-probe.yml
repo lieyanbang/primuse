@@ -92,17 +92,51 @@ jobs:
 
           with open(sys.argv[1], encoding="utf-8") as source:
               inventory = json.load(source)["project"]
-          expected = ["MusicHapticsProbe"]
-          if inventory.get("targets") != expected:
+          expected_targets = {"MusicHapticsProbe", "MusicHapticsProbeTests"}
+          if set(inventory.get("targets", [])) != expected_targets:
               raise SystemExit(f"Unexpected project targets: {inventory.get('targets')}")
-          if inventory.get("schemes") != expected:
+          if inventory.get("schemes") != ["MusicHapticsProbe"]:
               raise SystemExit(f"Unexpected project schemes: {inventory.get('schemes')}")
-          print("Standalone target and scheme verified; no Primuse service targets are present.")
+          print("Standalone app, focused unit-test target, and scheme verified; no Primuse service targets are present.")
           PY
-          if rg -n 'CloudKit|Intents|AppIntents|WidgetKit|WatchKit|DeviceCheck|CODE_SIGN_ENTITLEMENTS|packages:' Sources project.yml; then
+          if rg -n 'CloudKit|Intents|AppIntents|WidgetKit|WatchKit|DeviceCheck|CODE_SIGN_ENTITLEMENTS|packages:' Sources Tests project.yml; then
             echo "The standalone target references a prohibited service, extension, or package." >&2
             exit 1
           fi
+
+      - name: Run focused iOS Simulator unit tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          project="$PROJECT_DIR/$PRODUCT_NAME.xcodeproj"
+          simulator_id=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          inventory = json.load(sys.stdin)
+          options = []
+          for runtime, devices in inventory.get("devices", {}).items():
+              if "iOS" not in runtime:
+                  continue
+              version = runtime.rsplit("iOS-", 1)[-1]
+              version_key = tuple(int(part) for part in version.split("-") if part.isdigit())
+              for device in devices:
+                  if device.get("isAvailable") and device.get("name", "").startswith("iPhone"):
+                      options.append((version_key, device["name"], device["udid"]))
+          if not options:
+              raise SystemExit("No available iPhone Simulator destination was found")
+          options.sort(reverse=True)
+          print(options[0][2])
+          ')
+          echo "Simulator destination: $simulator_id"
+          xcodebuild test \
+            -project "$project" \
+            -scheme "$PRODUCT_NAME" \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,id=$simulator_id" \
+            -derivedDataPath "$RUNNER_TEMP/MusicHapticsProbeTestDerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            2>&1 | tee "$RUNNER_TEMP/xcodebuild-tests.log"
 
       - name: Build iOS Device Debug without signing
         shell: bash
@@ -129,8 +163,7 @@ jobs:
           derived="$RUNNER_TEMP/MusicHapticsProbeDerivedData"
           app="$derived/Build/Products/Debug-iphoneos/$PRODUCT_NAME.app"
           archive="$RUNNER_TEMP/$PRODUCT_NAME-unsigned.xcarchive"
-          archive_zip_name="Primuse-MusicHapticsProbe-Debug-unsigned.xcarchive.zip"
-          ipa_name="Primuse-MusicHapticsProbe-Debug-unsigned.ipa"
+          archive_zip_name="primuse-music-haptics-probe-unsigned.xcarchive.zip"
           test -d "$app"
 
           verify_app() {
@@ -147,14 +180,22 @@ jobs:
           print(f"Built MusicHapticsSupported={haptics_value!r} (plist type: {type(haptics_value).__name__})")
           if type(haptics_value) is not bool or haptics_value is not True:
               raise SystemExit("Built Info.plist must contain Boolean MusicHapticsSupported=true")
+          if info.get("CFBundleShortVersionString") != "0.2.0":
+              raise SystemExit(f"Unexpected prototype version: {info.get('CFBundleShortVersionString')}")
+          if info.get("CFBundleVersion") != "2":
+              raise SystemExit(f"Unexpected prototype build number: {info.get('CFBundleVersion')}")
           if info.get("CFBundleIdentifier") != "com.welape.primuse.musichapticsprobe":
               raise SystemExit(f"Unexpected bundle identifier: {info.get('CFBundleIdentifier')}")
           if info.get("CFBundlePackageType") != "APPL":
               raise SystemExit(f"Unexpected package type: {info.get('CFBundlePackageType')}")
-          for key in ("UIBackgroundModes", "BGTaskSchedulerPermittedIdentifiers", "CKContainerEnvironment"):
+          for key in ("BGTaskSchedulerPermittedIdentifiers", "CKContainerEnvironment"):
               if key in info:
                   raise SystemExit(f"Unexpected background or CloudKit declaration: {key}")
-          print("Built app Info.plist: MusicHapticsSupported is Boolean true; bundle metadata is valid.")
+          if info.get("UIBackgroundModes") != ["audio"]:
+              raise SystemExit(f"Only the required audio background mode is allowed: {info.get('UIBackgroundModes')}")
+          if info.get("UIFileSharingEnabled") is not True or info.get("LSSupportsOpeningDocumentsInPlace") is not True:
+              raise SystemExit("Documents Files sharing must be enabled in the built app")
+          print("Built app Info.plist: v0.2, MusicHapticsSupported Boolean true, Files sharing enabled.")
           PY
 
             local executable
@@ -176,7 +217,7 @@ jobs:
               file "$binary"
               otool -L "$binary" | tee -a "$linked"
             done
-            for framework in AVFoundation MediaAccessibility MediaPlayer UniformTypeIdentifiers; do
+            for framework in AVFoundation MediaAccessibility MediaPlayer UniformTypeIdentifiers UIKit; do
               grep -Fq "$framework.framework" "$linked"
             done
             for forbidden in CloudKit Intents AppIntents WidgetKit WatchKit DeviceCheck; do
@@ -220,11 +261,18 @@ jobs:
 
           artifact_dir="$RUNNER_TEMP/music-haptics-probe-artifacts"
           stage="$RUNNER_TEMP/music-haptics-probe-ipa-stage"
+          build_stamp_brisbane=$(TZ=Australia/Brisbane date '+%Y-%m-%dT%H:%M:%S%z|%H%M')
+          build_time_brisbane=${build_stamp_brisbane%|*}
+          build_hhmm_brisbane=${build_stamp_brisbane#*|}
+          ipa_name="primuse-music-haptics-probe-${build_hhmm_brisbane}.ipa"
+          export BUILD_TIME_BRISBANE="$build_time_brisbane"
+          export BUILD_HHMM_BRISBANE="$build_hhmm_brisbane"
           mkdir -p "$artifact_dir" "$stage/Payload"
           archive_zip="$artifact_dir/$archive_zip_name"
           ipa="$artifact_dir/$ipa_name"
           ditto -c -k --sequesterRsrc --keepParent "$archive" "$archive_zip"
           ditto "$archived_app" "$stage/Payload/$PRODUCT_NAME.app"
+          verify_app "$stage/Payload/$PRODUCT_NAME.app"
           (cd "$stage" && /usr/bin/zip -X -q -r "$ipa" Payload)
 
           unzip -tq "$archive_zip"
@@ -284,10 +332,15 @@ jobs:
               "configuration": "Debug",
               "destination": "generic/platform=iOS",
               "bundle_identifier": os.environ["PRODUCT_BUNDLE_IDENTIFIER"],
+              "app_version": "0.2.0",
+              "app_build": "2",
               "music_haptics_supported": True,
+              "background_modes": ["audio"],
               "code_signing": "disabled",
-              "frameworks": ["AVFoundation", "Foundation", "MediaAccessibility", "MediaPlayer", "SwiftUI", "UniformTypeIdentifiers"],
+              "frameworks": ["AVFoundation", "Foundation", "MediaAccessibility", "MediaPlayer", "SwiftUI", "UIKit", "UniformTypeIdentifiers"],
               "swift_modules": ["Observation"],
+              "build_time_australia_brisbane": os.environ.get("BUILD_TIME_BRISBANE", "unknown"),
+              "ipa_filename_local_time_hhmm": os.environ.get("BUILD_HHMM_BRISBANE", "unknown"),
               "archive": artifact(archive_zip),
               "unsigned_ipa": artifact(ipa),
           }
@@ -304,8 +357,11 @@ jobs:
             echo '## Music Haptics Probe artifact validation'
             echo
             echo '- Bundle ID: `com.welape.primuse.musichapticsprobe`'
+            echo '- Prototype version: `0.2.0`'
             echo '- `MusicHapticsSupported`: Boolean `true` in built app, archive, and IPA payload'
+            echo '- Background mode: `audio` only, for requested background playback and lock-screen controls'
             echo '- Device architecture: `arm64`'
+            echo "- Unsigned IPA: \`$ipa_name\` (packaged at $build_time_brisbane Australia/Brisbane)"
             echo '- Signing: disabled; the IPA requires manual signing before installation'
             echo
             echo '```json'
@@ -324,6 +380,7 @@ jobs:
             ${{ runner.temp }}/xcodegen-version.txt
             ${{ runner.temp }}/xcodebuild-build.log
             ${{ runner.temp }}/xcodebuild-archive.log
+            ${{ runner.temp }}/xcodebuild-tests.log
             ${{ runner.temp }}/project-inventory.json
             ${{ runner.temp }}/linked-frameworks.txt
             ${{ runner.temp }}/artifact-manifest.json

@@ -12,4 +12,9 @@ enum ISRC {
 
         return code
     }
+
+    static func redacted(_ value: String?) -> String {
+        guard let code = value.flatMap(normalized) else { return "absent-or-invalid" }
+        return "\(code.prefix(2))••••••\(code.suffix(4))"
+    }
 }
