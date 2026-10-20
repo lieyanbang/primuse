@@ -387,9 +387,9 @@ final class LocalAudioPlayer: NSObject, AVAudioPlayerDelegate {
             ) { [weak self] notification in
             let rawType = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt ?? 0
             let rawOptions = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
-            let wasSuspended = notification.userInfo?[AVAudioSessionInterruptionWasSuspendedKey] as? Bool ?? false
+            let rawReason = notification.userInfo?[AVAudioSessionInterruptionReasonKey] as? UInt ?? 0
             Task { @MainActor [weak self] in
-                self?.handleAudioInterruption(rawType: rawType, rawOptions: rawOptions, wasSuspended: wasSuspended)
+                self?.handleAudioInterruption(rawType: rawType, rawOptions: rawOptions, reasonCode: rawReason)
             }
             }
         }
@@ -412,7 +412,7 @@ final class LocalAudioPlayer: NSObject, AVAudioPlayerDelegate {
         }
     }
 
-    private func handleAudioInterruption(rawType: UInt, rawOptions: UInt, wasSuspended: Bool) {
+    private func handleAudioInterruption(rawType: UInt, rawOptions: UInt, reasonCode: UInt) {
         guard let type = AVAudioSession.InterruptionType(rawValue: rawType) else { return }
 
         if type == .began {
@@ -425,7 +425,7 @@ final class LocalAudioPlayer: NSObject, AVAudioPlayerDelegate {
             publishNowPlayingInfo(reason: "audio_interruption_began")
             logPlayback("interruption_began", parameters: [
                 "was_playing": String(wasPlayingBeforeInterruption),
-                "delivered_after_suspension": String(wasSuspended)
+                "reason_code": String(reasonCode)
             ])
         } else if type == .ended {
             let shouldResume = AVAudioSession.InterruptionOptions(rawValue: rawOptions).contains(.shouldResume)

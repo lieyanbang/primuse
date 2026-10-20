@@ -33,8 +33,12 @@ enum AudioMetadataReader {
         let title = await stringValue(in: commonItems, identifier: .commonIdentifierTitle)
         let artist = await stringValue(in: commonItems, identifier: .commonIdentifierArtist)
         let album = await stringValue(in: commonItems, identifier: .commonIdentifierAlbumName)
-        let isrc = await stringValue(in: allItems, identifier: .id3MetadataInternationalStandardRecordingCode)
-            ?? stringValue(in: allItems, containingIdentifier: "isrc")
+        let isrc: String?
+        if let taggedISRC = await stringValue(in: allItems, identifier: .id3MetadataInternationalStandardRecordingCode) {
+            isrc = taggedISRC
+        } else {
+            isrc = await stringValue(in: allItems, containingIdentifier: "isrc")
+        }
 
         let seconds = CMTimeGetSeconds(duration)
         return ImportedAudioMetadata(
