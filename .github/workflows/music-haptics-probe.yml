@@ -139,7 +139,9 @@ jobs:
 
           with open(sys.argv[1], "rb") as source:
               info = plistlib.load(source)
-          if type(info.get("MusicHapticsSupported")) is not bool or info["MusicHapticsSupported"] is not True:
+          haptics_value = info.get("MusicHapticsSupported")
+          print(f"Built MusicHapticsSupported={haptics_value!r} (plist type: {type(haptics_value).__name__})")
+          if type(haptics_value) is not bool or haptics_value is not True:
               raise SystemExit("Built Info.plist must contain Boolean MusicHapticsSupported=true")
           if info.get("CFBundleIdentifier") != "com.welape.primuse.musichapticsprobe":
               raise SystemExit(f"Unexpected bundle identifier: {info.get('CFBundleIdentifier')}")
